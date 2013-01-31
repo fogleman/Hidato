@@ -17,7 +17,6 @@ class Annealer(object):
         if self.listener:
             self.listener(best_state, best_energy)
         for step in xrange(steps):
-            print step, steps
             temp = max_temp * math.exp(factor * step / steps)
             undo_data = self.do_move_func(state)
             energy = self.energy_func(state)

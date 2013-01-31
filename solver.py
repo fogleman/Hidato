@@ -71,6 +71,8 @@ def _solve1(width, height, grid):
 
 def solve(width, height, grid):
     grid = naive.solve(width, height, grid)
+    if grid.count(0) == 0:
+        return grid
     generator = _solve1(width, height, grid)
     try:
         result = generator.next()
