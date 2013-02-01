@@ -48,23 +48,23 @@ void display(int width, int height, int *grid) {
     for (int y = 0; y < height; y++) {
         printf("+");
         for (int x = 0; x < width; x++) {
-            printf("--+");
+            printf("---+");
         }
         printf("\n|");
         for (int x = 0; x < width; x++) {
             int i = y * width + x;
             if (grid[i]) {
-                printf("%02d|", grid[i]);
+                printf("%3d|", grid[i]);
             }
             else {
-                printf("  |");
+                printf("   |");
             }
         }
         printf("\n");
     }
     printf("+");
     for (int x = 0; x < width; x++) {
-        printf("--+");
+        printf("---+");
     }
     printf("\n\n");
 }
@@ -181,8 +181,8 @@ int main(int argc, char **argv) {
     srand((tv.tv_sec * 1000) + (tv.tv_usec / 1000));
     Model _model;
     Model *model = &_model;
-    int width = 6;
-    int height = 6;
+    int width = 16;
+    int height = width;
     while (1) {
         gen_init(model, width, height);
         gen_randomize(model);
