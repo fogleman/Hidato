@@ -16,7 +16,7 @@ int randint(int n) {
     return result;
 }
 
-double random() {
+double randdouble() {
     return (double)rand() / (double)RAND_MAX;
 }
 
@@ -24,8 +24,8 @@ int random_neighbor(Model *model, int index) {
     int x = index % model->width;
     int y = index / model->width;
     while (1) {
-        int dx = randint(2) - 1;
-        int dy = randint(2) - 1;
+        int dx = randint(3) - 1;
+        int dy = randint(3) - 1;
         if (dx == 0 && dy == 0) {
             continue;
         }
@@ -48,18 +48,12 @@ int extract_path(Model *model, int *path) {
         lookup[i] = -1;
     }
     for (int i = 0; i < size; i++) {
-        if (model->next[i] >= 0) {
-            lookup[model->next[i]] = i;
-        }
+        lookup[model->next[i]] = i;
     }
     int index = model->end;
     int number = size;
-    int result = 0;
     for (int i = 0; i < size; i++) {
-        result++;
-        if (path) {
-            path[index] = number;
-        }
+        path[index] = number;
         number--;
         index = lookup[index];
         if (index < 0) {
@@ -67,12 +61,21 @@ int extract_path(Model *model, int *path) {
         }
     }
     free(lookup);
+    int result = 0;
+    for (int i = 0; i < size; i++) {
+        if (path[i]) {
+            result++;
+        }
+    }
     return result;
 }
 
-double compute_energy(Model *model) {
+int compute_energy(Model *model) {
     int size = model->width * model->height;
-    return size - extract_path(model, 0);
+    int *grid = calloc(size, sizeof(int));
+    int count = extract_path(model, grid);
+    free(grid);
+    return size - count;
 }
 
 int do_move(Model *model) {
@@ -97,30 +100,13 @@ void undo_move(Model *model, int undo_data) {
     model->next[index] = value;
 }
 
-double anneal(Model *model, double max_temp, double min_temp, int steps) {
-    printf("here\n");
-    double factor = -log(max_temp / min_temp);
-    double energy = compute_energy(model);
-    double previous_energy = energy;
-    double best_energy = energy;
-    // best_state
-    for (int step = 0; step < steps; step++) {
-        printf("%d\n", step);
-        double temp = max_temp * exp(factor * step / steps);
-        int undo_data = do_move(model);
-        energy = compute_energy(model);
-        double change = energy - previous_energy;
-        if (change > 0 && exp(-change / temp) < random()) {
-            undo_move(model, undo_data);
-        }
-        else {
-            previous_energy = energy;
-            if (energy < best_energy) {
-                best_energy = energy;
-            }
-        }
+void make_copy(Model *dst, Model *src) {
+    dst->width = src->width;
+    dst->height = src->height;
+    dst->end = src->end;
+    for (int i = 0; i < src->width * src->height; i++) {
+        dst->next[i] = src->next[i];
     }
-    return best_energy;
 }
 
 void init(Model *model, int width, int height) {
@@ -138,12 +124,82 @@ void uninit(Model *model) {
     free(model->next);
 }
 
+int anneal(Model *model, double max_temp, double min_temp, int steps) {
+    Model _best;
+    Model *best = &_best;
+    init(best, model->width, model->height);
+    make_copy(best, model);
+    double factor = -log(max_temp / min_temp);
+    int energy = compute_energy(model);
+    int previous_energy = energy;
+    int best_energy = energy;
+    for (int step = 0; step < steps; step++) {
+        double temp = max_temp * exp(factor * step / steps);
+        int undo_data = do_move(model);
+        energy = compute_energy(model);
+        double change = energy - previous_energy;
+        if (change > 0 && exp(-change / temp) < randdouble()) {
+            undo_move(model, undo_data);
+        }
+        else {
+            previous_energy = energy;
+            if (energy < best_energy) {
+                best_energy = energy;
+                make_copy(best, model);
+                if (energy <= 0) {
+                    break;
+                }
+            }
+        }
+    }
+    make_copy(model, best);
+    uninit(best);
+    return best_energy;
+}
+
+void display(Model *model) {
+    int size = model->width * model->height;
+    int *grid = calloc(size, sizeof(int));
+    extract_path(model, grid);
+    for (int y = 0; y < model->height; y++) {
+        printf("+");
+        for (int x = 0; x < model->width; x++) {
+            printf("--+");
+        }
+        printf("\n|");
+        for (int x = 0; x < model->width; x++) {
+            int i = y * model->width + x;
+            if (grid[i]) {
+                printf("%02d|", grid[i]);
+            }
+            else {
+                printf("  |");
+            }
+        }
+        printf("\n");
+    }
+    printf("+");
+    for (int x = 0; x < model->width; x++) {
+        printf("--+");
+    }
+    printf("\n\n");
+    free(grid);
+}
+
 int main(int argc, char **argv) {
     srand(time(NULL));
-    Model model;
-    init(&model, 8, 8);
-    double energy = anneal(&model, 64, 0.1, 100000);
-    printf("%d\n", energy);
-    uninit(&model);
+    Model _model;
+    Model *model = &_model;
+    int width = 6;
+    int height = 6;
+    while (1) {
+        init(model, width, height);
+        int energy = anneal(model, width * height, 0.1, 100000);
+        if (energy == 0) {
+            display(model);
+            break;
+        }
+    }
+    uninit(model);
     return 0;
 }
