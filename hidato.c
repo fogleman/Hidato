@@ -12,6 +12,18 @@ typedef struct {
     int *next;
 } Model;
 
+typedef struct {
+    int width;
+    int height;
+    int size;
+    int *data;
+} Grid;
+
+typedef struct {
+    int start;
+    int end;
+} Group;
+
 int rand_int(int n) {
     int result;
     while (n <= (result = rand() / (RAND_MAX / n)));
@@ -22,7 +34,7 @@ double rand_double() {
     return (double)rand() / (double)RAND_MAX;
 }
 
-int random_neighbor(int width, int height, int index) {
+int rand_neighbor(int width, int height, int index) {
     int x = index % width;
     int y = index / width;
     while (1) {
@@ -80,7 +92,7 @@ void gen_init(Model *model, int width, int height) {
 
 void gen_randomize(Model *model) {
     for (int i = 0; i < model->size; i++) {
-        model->next[i] = random_neighbor(model->width, model->height, i);
+        model->next[i] = rand_neighbor(model->width, model->height, i);
     }
 }
 
@@ -120,7 +132,7 @@ int gen_do_move(Model *model) {
     int before = model->next[index];
     int after;
     do {
-        after = random_neighbor(model->width, model->height, index);
+        after = rand_neighbor(model->width, model->height, index);
     } while (after == before);
     model->next[index] = after;
     return (index << 16) | before;
@@ -175,10 +187,7 @@ int gen_anneal(Model *model, double max_temp, double min_temp, int steps) {
     return best_energy;
 }
 
-int main(int argc, char **argv) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    srand((tv.tv_sec * 1000) + (tv.tv_usec / 1000));
+void gen_test() {
     Model _model;
     Model *model = &_model;
     int width = 16;
@@ -195,5 +204,170 @@ int main(int argc, char **argv) {
             break;
         }
     }
+}
+
+void solver_display(Grid *grid) {
+    display(grid->width, grid->height, grid->data);
+}
+
+int solver_find_groups(Grid *grid, Group *groups) {
+    int result = 0;
+    int visible[grid->size + 1]; // 1-based
+    for (int i = 0; i < grid->size + 1; i++) {
+        visible[i] = 0;
+    }
+    for (int i = 0; i < grid->size; i++) {
+        if (grid->data[i]) {
+            visible[grid->data[i]] = 1;
+        }
+    }
+    int start = 0;
+    int end = 0;
+    for (int i = 1; i < grid->size + 1; i++) {
+        if (visible[i]) {
+            if (end) {
+                Group *group = groups + result++;
+                group->start = start;
+                group->end = end;
+                end = 0;
+            }
+            start = i + 1;
+        }
+        else {
+            end = i;
+        }
+    }
+    if (end) {
+        Group *group = groups + result++;
+        group->start = start;
+        group->end = end;
+        end = 0;
+    }
+    return result;
+}
+
+void solver_lookup(Grid *grid, int *lookup) {
+    for (int i = 0; i < grid->size + 1; i++) {
+        lookup[i] = -1;
+    }
+    for (int i = 0; i < grid->size; i++) {
+        lookup[grid->data[i]] = i;
+    }
+}
+
+int solver_2(
+    Grid *grid, Grid *result, int *lookup, Group *groups,
+    int n_groups, int index)
+{
+    if (index == n_groups) {
+        int done = 1;
+        for (int i = 0; i < n_groups; i++) {
+            Group *group = groups + i;
+            if (group->start <= group->end) {
+                done = 0;
+                break;
+            }
+        }
+        if (done) {
+            int count = grid->size;
+            for (int i = 0; i < grid->size; i++) {
+                if (grid->data[i]) {
+                    count--;
+                }
+            }
+            if (count) {
+                return 0;
+            }
+            else {
+                solver_display(grid);
+                return 1;
+            }
+        }
+        else {
+            int new_lookup[grid->size + 1];
+            solver_lookup(grid, new_lookup);
+            return solver_2(grid, result, new_lookup, groups, n_groups, 0);
+        }
+    }
+    Group *group = groups + index;
+    if (group->start > group->end) {
+        return solver_2(grid, result, lookup, groups, n_groups, index + 1);
+    }
+    else {
+        int result = 0;
+        int i = lookup[group->start - 1];
+        group->start++;
+        int x = i % grid->width;
+        int y = i / grid->width;
+        int k = lookup[group->start];
+        int kx = -1;
+        int ky = -1;
+        if (k >= 0) {
+            kx = k % grid->width;
+            ky = k / grid->height;
+        }
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dy == 0) {
+                    continue;
+                }
+                int nx = x + dx;
+                int ny = y + dy;
+                if (nx < 0 || nx >= grid->width) {
+                    continue;
+                }
+                if (ny < 0 || ny >= grid->height) {
+                    continue;
+                }
+                int j = ny * grid->width + nx;
+                if (grid->data[j]) {
+                    continue;
+                }
+                if (k >= 0) {
+                    int kdx = abs(nx - kx);
+                    int kdy = abs(ny - ky);
+                    if (kdx > 1 || kdy > 1) {
+                        continue;
+                    }
+                }
+                grid->data[j] = group->start - 1;
+                result += solver_2(
+                    grid, result, lookup, groups,n_groups, index + 1);
+                grid->data[j] = 0;
+            }
+        }
+        group->start--;
+        return result;
+    }
+}
+
+void solver_1(Grid *grid) {
+    Group groups[grid->size];
+    int n_groups = solver_find_groups(grid, groups);
+    // TODO: if n_groups == 0
+    solver_2(grid, NULL, 0, groups, n_groups, n_groups);
+}
+
+void solver_test() {
+    int data[] = {
+        31,0,0,0,11,9,0,0,0,0,0,8,27,0,33,0,0,0,0,
+        25,36,17,0,0,0,23,0,19,4,0,0,0,0,0,0,1
+    };
+    Grid _grid;
+    Grid *grid = &_grid;
+    grid->width = 6;
+    grid->height = 6;
+    grid->size = 36;
+    grid->data = data;
+    solver_display(grid);
+    solver_1(grid);
+}
+
+int main(int argc, char **argv) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    srand((tv.tv_sec * 1000) + (tv.tv_usec / 1000));
+    // gen_test();
+    solver_test();
     return 0;
 }
