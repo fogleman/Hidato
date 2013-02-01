@@ -7,7 +7,8 @@
 typedef struct {
     int width;
     int height;
-    int end;
+    int size;
+    int start;
     int *next;
 } Model;
 
@@ -72,10 +73,14 @@ void gen_init(Model *model, int width, int height) {
     int size = width * height;
     model->width = width;
     model->height = height;
-    model->end = rand_int(size);
+    model->size = size;
+    model->start = rand_int(size);
     model->next = calloc(size, sizeof(int));
-    for (int i = 0; i < size; i++) {
-        model->next[i] = random_neighbor(width, height, i);
+}
+
+void gen_randomize(Model *model) {
+    for (int i = 0; i < model->size; i++) {
+        model->next[i] = random_neighbor(model->width, model->height, i);
     }
 }
 
@@ -84,53 +89,34 @@ void gen_uninit(Model *model) {
 }
 
 int gen_extract(Model *model, int *grid) {
-    int size = model->width * model->height;
-    int lookup[size];
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < model->size; i++) {
         grid[i] = 0;
-        lookup[i] = -1;
     }
-    for (int i = 0; i < size; i++) {
-        lookup[model->next[i]] = i;
-    }
-    int index = model->end;
-    int number = size;
-    for (int i = 0; i < size; i++) {
-        grid[index] = number;
-        number--;
-        index = lookup[index];
-        if (index < 0) {
-            break;
-        }
-    }
+    int index = model->start;
+    int number = 1;
     int result = 0;
-    for (int i = 0; i < size; i++) {
-        if (grid[i]) {
-            result++;
-        }
+    while (grid[index] == 0) {
+        result++;
+        grid[index] = number++;
+        index = model->next[index];
     }
     return result;
 }
 
 void gen_display(Model *model) {
-    int grid[model->width * model->height];
+    int grid[model->size];
     gen_extract(model, grid);
     display(model->width, model->height, grid);
 }
 
 int gen_energy(Model *model) {
-    int size = model->width * model->height;
-    int grid[size];
+    int grid[model->size];
     int count = gen_extract(model, grid);
-    return size - count;
+    return model->size - count;
 }
 
 int gen_do_move(Model *model) {
-    int size = model->width * model->height;
-    int index;
-    do {
-        index = rand_int(size);
-    } while (index == model->end);
+    int index = rand_int(model->size);
     int before = model->next[index];
     int after;
     do {
@@ -149,8 +135,9 @@ void gen_undo_move(Model *model, int undo_data) {
 void gen_copy(Model *dst, Model *src) {
     dst->width = src->width;
     dst->height = src->height;
-    dst->end = src->end;
-    for (int i = 0; i < src->width * src->height; i++) {
+    dst->size = src->size;
+    dst->start = src->start;
+    for (int i = 0; i < src->size; i++) {
         dst->next[i] = src->next[i];
     }
 }
@@ -198,7 +185,8 @@ int main(int argc, char **argv) {
     int height = 6;
     while (1) {
         gen_init(model, width, height);
-        int energy = gen_anneal(model, width * height, 0.1, 100000);
+        gen_randomize(model);
+        int energy = gen_anneal(model, 10, 0.1, 100000);
         if (energy == 0) {
             gen_display(model);
         }
