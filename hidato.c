@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 
 typedef struct {
     int width;
@@ -111,6 +112,12 @@ int gen_extract(Model *model, int *grid) {
     return result;
 }
 
+void gen_display(Model *model) {
+    int grid[model->width * model->height];
+    gen_extract(model, grid);
+    display(model->width, model->height, grid);
+}
+
 int gen_energy(Model *model) {
     int size = model->width * model->height;
     int grid[size];
@@ -182,7 +189,9 @@ int gen_anneal(Model *model, double max_temp, double min_temp, int steps) {
 }
 
 int main(int argc, char **argv) {
-    srand(time(NULL));
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    srand((tv.tv_sec * 1000) + (tv.tv_usec / 1000));
     Model _model;
     Model *model = &_model;
     int width = 6;
@@ -191,12 +200,12 @@ int main(int argc, char **argv) {
         gen_init(model, width, height);
         int energy = gen_anneal(model, width * height, 0.1, 100000);
         if (energy == 0) {
-            int grid[width * height];
-            gen_extract(model, grid);
-            display(width, height, grid);
+            gen_display(model);
+        }
+        gen_uninit(model);
+        if (energy == 0) {
             break;
         }
     }
-    gen_uninit(model);
     return 0;
 }
