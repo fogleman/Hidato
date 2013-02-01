@@ -255,8 +255,17 @@ void solver_lookup(Grid *grid, int *lookup) {
     }
 }
 
+void solver_copy(Grid *dst, Grid *src) {
+    dst->width = src->width;
+    dst->height = src->height;
+    dst->size = src->size;
+    for (int i = 0; i < src->size; i++) {
+        dst->data[i] = src->data[i];
+    }
+}
+
 int solver_2(
-    Grid *grid, Grid *result, int *lookup, Group *groups,
+    Grid *grid, Grid *output, int *lookup, Group *groups,
     int n_groups, int index)
 {
     if (index == n_groups) {
@@ -279,19 +288,19 @@ int solver_2(
                 return 0;
             }
             else {
-                solver_display(grid);
+                solver_copy(output, grid);
                 return 1;
             }
         }
         else {
             int new_lookup[grid->size + 1];
             solver_lookup(grid, new_lookup);
-            return solver_2(grid, result, new_lookup, groups, n_groups, 0);
+            return solver_2(grid, output, new_lookup, groups, n_groups, 0);
         }
     }
     Group *group = groups + index;
     if (group->start > group->end) {
-        return solver_2(grid, result, lookup, groups, n_groups, index + 1);
+        return solver_2(grid, output, lookup, groups, n_groups, index + 1);
     }
     else {
         int result = 0;
@@ -332,8 +341,11 @@ int solver_2(
                 }
                 grid->data[j] = group->start - 1;
                 result += solver_2(
-                    grid, result, lookup, groups,n_groups, index + 1);
+                    grid, output, lookup, groups,n_groups, index + 1);
                 grid->data[j] = 0;
+                if (result > 1) {
+                    break;
+                }
             }
         }
         group->start--;
@@ -341,11 +353,18 @@ int solver_2(
     }
 }
 
-void solver_1(Grid *grid) {
+int solver_1(Grid *grid) {
+    Grid _output;
+    Grid *output = &_output;
+    output->data = calloc(grid->size, sizeof(int));
     Group groups[grid->size];
     int n_groups = solver_find_groups(grid, groups);
-    // TODO: if n_groups == 0
-    solver_2(grid, NULL, 0, groups, n_groups, n_groups);
+    int result = solver_2(grid, output, 0, groups, n_groups, n_groups);
+    if (result == 1) {
+        solver_copy(grid, output);
+    }
+    free(output->data);
+    return result;
 }
 
 void solver_test() {
@@ -360,7 +379,9 @@ void solver_test() {
     grid->size = 36;
     grid->data = data;
     solver_display(grid);
-    solver_1(grid);
+    int count = solver_1(grid);
+    printf("%d\n", count);
+    solver_display(grid);
 }
 
 int main(int argc, char **argv) {
