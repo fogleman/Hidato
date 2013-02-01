@@ -187,23 +187,29 @@ int gen_anneal(Model *model, double max_temp, double min_temp, int steps) {
     return best_energy;
 }
 
-void gen_test() {
+void gen(int width, int height, int *output) {
     Model _model;
     Model *model = &_model;
-    int width = 16;
-    int height = width;
     while (1) {
         gen_init(model, width, height);
         gen_randomize(model);
         int energy = gen_anneal(model, 10, 0.1, 100000);
         if (energy == 0) {
-            gen_display(model);
+            gen_extract(model, output);
         }
         gen_uninit(model);
         if (energy == 0) {
             break;
         }
     }
+}
+
+void gen_test() {
+    int width = 16;
+    int height = width;
+    int data[width * height];
+    gen(width, height, data);
+    display(width, height, data);
 }
 
 void solver_display(Grid *grid) {
@@ -264,7 +270,7 @@ void solver_copy(Grid *dst, Grid *src) {
     }
 }
 
-int solver_2(
+int solver_helper(
     Grid *grid, Grid *output, int *lookup, Group *groups,
     int n_groups, int index)
 {
@@ -295,12 +301,12 @@ int solver_2(
         else {
             int new_lookup[grid->size + 1];
             solver_lookup(grid, new_lookup);
-            return solver_2(grid, output, new_lookup, groups, n_groups, 0);
+            return solver_helper(grid, output, new_lookup, groups, n_groups, 0);
         }
     }
     Group *group = groups + index;
     if (group->start > group->end) {
-        return solver_2(grid, output, lookup, groups, n_groups, index + 1);
+        return solver_helper(grid, output, lookup, groups, n_groups, index + 1);
     }
     else {
         int result = 0;
@@ -340,7 +346,7 @@ int solver_2(
                     }
                 }
                 grid->data[j] = group->start - 1;
-                result += solver_2(
+                result += solver_helper(
                     grid, output, lookup, groups,n_groups, index + 1);
                 grid->data[j] = 0;
                 if (result > 1) {
@@ -353,13 +359,13 @@ int solver_2(
     }
 }
 
-int solver_1(Grid *grid) {
+int solver(Grid *grid) {
     Grid _output;
     Grid *output = &_output;
     output->data = calloc(grid->size, sizeof(int));
     Group groups[grid->size];
     int n_groups = solver_find_groups(grid, groups);
-    int result = solver_2(grid, output, 0, groups, n_groups, n_groups);
+    int result = solver_helper(grid, output, 0, groups, n_groups, n_groups);
     if (result == 1) {
         solver_copy(grid, output);
     }
@@ -379,16 +385,113 @@ void solver_test() {
     grid->size = 36;
     grid->data = data;
     solver_display(grid);
-    int count = solver_1(grid);
+    int count = solver(grid);
     printf("%d\n", count);
     solver_display(grid);
+}
+
+int vis_energy(Grid *grid, int *visible) {
+    int energy = 0;
+    int data[grid->size];
+    for (int i = 0; i < grid->size; i++) {
+        if (visible[i]) {
+            data[i] = grid->data[i];
+            energy++;
+        }
+        else {
+            data[i] = 0;
+        }
+    }
+    int *temp = grid->data;
+    grid->data = data;
+    int count = solver(grid);
+    grid->data = temp;
+    if (count == 1) {
+        return energy;
+    }
+    else {
+        return grid->size;
+    }
+}
+
+int vis_do_move(Grid *grid, int *visible) {
+    int index;
+    do {
+        index = rand_int(grid->size);
+    } while (grid->data[index] == 1 || grid->data[index] == grid->size);
+    visible[index] = !visible[index];
+    return index;
+}
+
+void vis_undo_move(Grid *grid, int *visible, int index) {
+    visible[index] = !visible[index];
+}
+
+void vis_copy(int size, int *dst, int *src) {
+    for (int i = 0; i < size; i++) {
+        dst[i] = src[i];
+    }
+}
+
+int vis_anneal(Grid *grid, double max_temp, double min_temp, int steps) {
+    int visible[grid->size];
+    int best[grid->size];
+    for (int i = 0; i < grid->size; i++) {
+        visible[i] = 1;
+        best[i] = 1;
+    }
+    double factor = -log(max_temp / min_temp);
+    int energy = vis_energy(grid, visible);
+    int previous_energy = energy;
+    int best_energy = energy;
+    for (int step = 0; step < steps; step++) {
+        double temp = max_temp * exp(factor * step / steps);
+        int undo_data = vis_do_move(grid, visible);
+        energy = vis_energy(grid, visible);
+        double change = energy - previous_energy;
+        if (change > 0 && exp(-change / temp) < rand_double()) {
+            vis_undo_move(grid, visible, undo_data);
+        }
+        else {
+            previous_energy = energy;
+            if (energy < best_energy) {
+                best_energy = energy;
+                vis_copy(grid->size, best, visible);
+            }
+        }
+        // printf("%d of %d => %d\n", step + 1, steps, best_energy);
+    }
+    for (int i = 0; i < grid->size; i++) {
+        if (!best[i]) {
+            grid->data[i] = 0;
+        }
+    }
+    return best_energy;
+}
+
+int vis(int width, int height, int *output) {
+    Grid _grid;
+    Grid *grid = &_grid;
+    grid->width = width;
+    grid->height = height;
+    grid->size = width * height;
+    grid->data = output;
+    return vis_anneal(grid, 10, 0.1, 100);
+}
+
+void hidato(int width, int height) {
+    int output[width * height];
+    gen(width, height, output);
+    display(width, height, output);
+    int energy = vis(width, height, output);
+    display(width, height, output);
+    printf("%d\n", energy);
 }
 
 int main(int argc, char **argv) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     srand((tv.tv_sec * 1000) + (tv.tv_usec / 1000));
-    // gen_test();
-    solver_test();
+    hidato(8, 8);
     return 0;
 }
